@@ -1,0 +1,56 @@
+name: Resize Posters
+
+on:
+  push:
+    paths:
+      - 'docs/Posters/**'
+
+permissions:
+  contents: write
+
+jobs:
+  resize_images:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        ref: ${{ github.ref }}
+
+    - name: リモートの変更を取得
+      run: |
+        git pull origin ${{ github.ref_name }}
+
+    - name: ImageMagickのインストール
+      run: sudo apt-get install -y imagemagick
+
+    - name: 画像のリサイズ
+      run: |
+        find docs/Posters/ -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) -print0 | while IFS= read -r -d '' file; do
+          dimensions=$(identify -format "%wx%h" "$file")
+          width=${dimensions%x*}
+          height=${dimensions#*x}
+          if [ $width -gt $height ]; then
+            max_dimension=$width
+          else
+            max_dimension=$height
+          fi
+          if [ $max_dimension -gt 2048 ]; then
+            echo "Resizing $file"
+            mogrify -resize 2048x2048\> "$file"
+          fi
+        done
+
+    - name: 変更をコミットしてプッシュ
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        if [ -n "$(git status --porcelain)" ]; then
+          git add docs/Posters/
+          git commit -m "画像を最大2048pxにリサイズ"
+          git push origin HEAD:${{ github.ref_name }}
+        else
+          echo "リサイズする画像はありませんでした。"
+        fi
